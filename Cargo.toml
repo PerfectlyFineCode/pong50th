@@ -1,0 +1,15 @@
+[package]
+name = "pong50th"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+raylib = "3.7.0"
+rand = "0.8.5"
+lazy_static = "1.4.0"
+
+[profile.release]
+lto = true
+strip = true
