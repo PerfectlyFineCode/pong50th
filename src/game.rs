@@ -15,6 +15,7 @@ pub struct Game {
     ball_velocity: Vector2,
     ball_speed: f32,
     ball_radius: f32,
+    ball_position_history: [Vector2; 10],
     player_position: Vector2,
     player_size: Vector2,
     player_speed: f32,
@@ -32,11 +33,11 @@ impl Game {
         Self {
             ball_position: /* center screen */ Vector2::new(rl.get_screen_width() as f32 / 2.0, rl.get_screen_height() as f32 / 2.0),
             ball_velocity: Vector2::UP + Vector2::LEFT * 0.5,
-            ball_speed: 1000.0,
+            ball_speed: 3000.0,
             ball_radius: 10.0,
             player_position: Vector2::new(10.0, rl.get_screen_height() as f32 / 2.0 - 50.0),
             player_size: Vector2::new(10.0, 100.0),
-            player_speed: 1000.0,
+            player_speed: 2000.0,
             enemy_ai: AI::new(rl.get_screen_width() as f32, rl.get_screen_height() as f32),
             score: (0, 0),
             screen_width: rl.get_screen_width(),
@@ -44,6 +45,7 @@ impl Game {
             time_since_last_score: 0.0,
             paused: true,
             game_state: GameState::Credits,
+            ball_position_history: [Vector2::new(rl.get_screen_width() as f32 / 2.0, rl.get_screen_height() as f32 / 2.0); 10],
         }
     }
 
@@ -75,11 +77,11 @@ impl Game {
 
         let delta_time = unsafe { time::DELTA_TIME };
 
+        self.update_player_movement(rl, delta_time);
+
         if self.paused {
             return;
         }
-
-        self.update_player_movement(rl, delta_time);
 
         self.enemy_ai.update();
 
@@ -90,6 +92,11 @@ impl Game {
     }
 
     fn update_player_movement(&mut self, rl: &mut RaylibHandle, delta_time: f32) {
+        let position = &mut self.player_position;
+        // add position to history and remove oldest entry
+        self.ball_position_history.rotate_right(1);
+        self.ball_position_history[0] = self.ball_position;
+
         // check W and S keys
         if rl.is_key_down(KeyboardKey::KEY_W) {
             self.player_position.y -= self.player_speed * delta_time;
@@ -100,14 +107,35 @@ impl Game {
             self.player_position.y = self.player_position.y.min(self.screen_height as f32 - self.player_size.y);
         }
 
+        // check arrow up and down keys
+        if rl.is_key_down(KeyboardKey::KEY_UP) {
+            self.player_position.y -= self.player_speed * delta_time;
+            self.player_position.y = self.player_position.y.max(0.0);
+        }
+        else if rl.is_key_down(KeyboardKey::KEY_DOWN) {
+            self.player_position.y += self.player_speed * delta_time;
+            self.player_position.y = self.player_position.y.min(self.screen_height as f32 - self.player_size.y);
+        }
+
         // check gamepad
         if rl.is_gamepad_available(0) {
+            // check left stick y axis
             let y = rl.get_gamepad_axis_movement(0, GamepadAxis::GAMEPAD_AXIS_LEFT_Y);
             if y < -0.5 {
                 self.player_position.y -= self.player_speed * delta_time;
                 self.player_position.y = self.player_position.y.max(0.0);
             }
             else if y > 0.5 {
+                self.player_position.y += self.player_speed * delta_time;
+                self.player_position.y = self.player_position.y.min(self.screen_height as f32 - self.player_size.y);
+            }
+
+            // check d-pad up and down
+            if rl.is_gamepad_button_down(0, GamepadButton::GAMEPAD_BUTTON_LEFT_FACE_UP) {
+                self.player_position.y -= self.player_speed * delta_time;
+                self.player_position.y = self.player_position.y.max(0.0);
+            }
+            else if rl.is_gamepad_button_down(0, GamepadButton::GAMEPAD_BUTTON_LEFT_FACE_DOWN) {
                 self.player_position.y += self.player_speed * delta_time;
                 self.player_position.y = self.player_position.y.min(self.screen_height as f32 - self.player_size.y);
             }
@@ -135,6 +163,11 @@ impl Game {
         let time_since_last_score = time - self.time_since_last_score;
         let countdown = 3.0 - time_since_last_score;
         if countdown > 0.0 {
+            d.draw_circle(self.screen_width as i32 / 2,
+                          self.screen_height as i32 / 2,
+                          100.0,
+                          Color::WHITE);
+
             // draw text with format 3 2 1
             let text = format!("{:.0}", countdown);
             let text_width = measure_text(&text, 100) as f32;
@@ -144,7 +177,7 @@ impl Game {
                         text_position.x as i32,
                         text_position.y as i32,
                         100,
-                        Color::WHITE);
+                        Color::BLACK);
         }
     }
 
@@ -324,8 +357,8 @@ fn check_ball_collision(ball_position: Vector2,
 fn reflect_ball(v_in: Vector2, ball_position: Vector2, paddle_center: Vector2) -> Vector2 {
     let mut v_out = v_in;
     // bounce off paddle Y velocity is the difference between the ball position and the paddle center normalized
-    v_out.y = (ball_position.y - paddle_center.y).normalize(0.0, 1.0);
-
+    let diff = (ball_position - paddle_center).normalized();
+    v_out.y = diff.y * -1.0;
     v_out.x *= -1.0;
     v_out
 }
