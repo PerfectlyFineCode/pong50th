@@ -5,6 +5,8 @@ use raylib::prelude::*;
 use crate::ai::AI;
 use crate::audiosystem::{play_sfx, SoundType};
 use crate::debug::draw_line;
+use crate::floathelper::FloatHelper;
+pub use crate::gamestate::GameState;
 use crate::time;
 use crate::vectorhelper::Vector2Ext;
 
@@ -18,28 +20,30 @@ pub struct Game {
     player_speed: f32,
     enemy_ai: AI,
     score: (i32, i32),
-    time_since_last_score: f64,
+    pub(crate) time_since_last_score: f64,
     pub(crate) paused: bool,
     pub screen_width: i32,
     pub screen_height: i32,
+    pub game_state: GameState,
 }
 
 impl Game {
-    pub fn new(rl: &mut RaylibHandle, thread: &RaylibThread) -> Self {
+    pub fn new(rl: &mut RaylibHandle) -> Self {
         Self {
             ball_position: /* center screen */ Vector2::new(rl.get_screen_width() as f32 / 2.0, rl.get_screen_height() as f32 / 2.0),
             ball_velocity: Vector2::UP + Vector2::LEFT * 0.5,
-            ball_speed: 15.0,
+            ball_speed: 1000.0,
             ball_radius: 10.0,
             player_position: Vector2::new(10.0, rl.get_screen_height() as f32 / 2.0 - 50.0),
             player_size: Vector2::new(10.0, 100.0),
-            player_speed: 10.0,
+            player_speed: 1000.0,
             enemy_ai: AI::new(rl.get_screen_width() as f32, rl.get_screen_height() as f32),
             score: (0, 0),
             screen_width: rl.get_screen_width(),
             screen_height: rl.get_screen_height(),
             time_since_last_score: 0.0,
             paused: true,
+            game_state: GameState::Credits,
         }
     }
 
@@ -61,51 +65,71 @@ impl Game {
                                           self.screen_height as f32 / 2.0);
     }
 
-    fn countdown(&mut self, rl: &mut RaylibHandle, thread: &RaylibThread) {
+    fn countdown(&mut self, rl: &mut RaylibHandle) {
         // count down from 3
         self.paused = rl.get_time() - self.time_since_last_score < 3.0;
     }
 
-    pub fn update(&mut self, rl: &mut RaylibHandle, thread: &RaylibThread) {
-        self.countdown(rl, thread);
+    pub fn update(&mut self, rl: &mut RaylibHandle) {
+        self.countdown(rl);
+
+        let delta_time = unsafe { time::DELTA_TIME };
 
         if self.paused {
             return;
         }
 
+        self.update_player_movement(rl, delta_time);
+
         self.enemy_ai.update();
-        // check W and S keys
-        if rl.is_key_down(KeyboardKey::KEY_W) {
-            self.player_position.y -= self.player_speed;
-            self.player_position.y = self.player_position.y.max(0.0);
-        }
-        else if rl.is_key_down(KeyboardKey::KEY_S) {
-            self.player_position.y += self.player_speed;
-            self.player_position.y = self.player_position.y.min(self.screen_height as f32 - self.player_size.y);
-        }
 
         // update ball position and velocity
-        self.ball_position += self.ball_velocity * (self.ball_speed / (self.screen_width as f32 / self.screen_height as f32));
+        self.ball_position += self.ball_velocity * (self.ball_speed / (self.screen_width as f32 / self.screen_height as f32)) * delta_time;
         self.enemy_ai.update_ball(self.ball_position, self.ball_velocity, self.ball_speed, self.ball_radius);
         self.check_collision();
     }
 
-    pub fn draw(&mut self, d: &mut RaylibDrawHandle, thread: &RaylibThread) {
-        // draw center line
-        self.draw_center_line(d, thread);
-        // draw ball
-        self.draw_ball(d, thread);
-        // draw player
-        self.draw_player(d, thread);
-        // draw enemy
-        self.draw_enemy(d, thread);
-        // draw score
-        self.draw_score(d, thread);
-        // draw countdown
-        self.draw_countdown(d, thread);
+    fn update_player_movement(&mut self, rl: &mut RaylibHandle, delta_time: f32) {
+        // check W and S keys
+        if rl.is_key_down(KeyboardKey::KEY_W) {
+            self.player_position.y -= self.player_speed * delta_time;
+            self.player_position.y = self.player_position.y.max(0.0);
+        }
+        else if rl.is_key_down(KeyboardKey::KEY_S) {
+            self.player_position.y += self.player_speed * delta_time;
+            self.player_position.y = self.player_position.y.min(self.screen_height as f32 - self.player_size.y);
+        }
+
+        // check gamepad
+        if rl.is_gamepad_available(0) {
+            let y = rl.get_gamepad_axis_movement(0, GamepadAxis::GAMEPAD_AXIS_LEFT_Y);
+            if y < -0.5 {
+                self.player_position.y -= self.player_speed * delta_time;
+                self.player_position.y = self.player_position.y.max(0.0);
+            }
+            else if y > 0.5 {
+                self.player_position.y += self.player_speed * delta_time;
+                self.player_position.y = self.player_position.y.min(self.screen_height as f32 - self.player_size.y);
+            }
+        }
     }
 
-    fn draw_countdown(&mut self, d: &mut RaylibDrawHandle, thread: &RaylibThread) {
+    pub fn draw(&mut self, d: &mut RaylibDrawHandle) {
+        // draw center line
+        self.draw_center_line(d);
+        // draw ball
+        self.draw_ball(d);
+        // draw player
+        self.draw_player(d);
+        // draw enemy
+        self.draw_enemy(d);
+        // draw score
+        self.draw_score(d);
+        // draw countdown
+        self.draw_countdown(d);
+    }
+
+    fn draw_countdown(&mut self, d: &mut RaylibDrawHandle) {
         // draw countdown format 3 2 1 GO
         let time = get_time();
         let time_since_last_score = time - self.time_since_last_score;
@@ -124,20 +148,20 @@ impl Game {
         }
     }
 
-    fn draw_enemy(&mut self, d: &mut RaylibDrawHandle, thread: &RaylibThread) {
+    fn draw_enemy(&mut self, d: &mut RaylibDrawHandle) {
 
         d.draw_rectangle_v(self.enemy_ai.position,
                            self.enemy_ai.size,
                            Color::WHITE);
     }
 
-    fn draw_player(&mut self, d: &mut RaylibDrawHandle, thread: &RaylibThread) {
+    fn draw_player(&mut self, d: &mut RaylibDrawHandle) {
         d.draw_rectangle_v(self.player_position,
                            self.player_size,
                            Color::WHITE);
     }
 
-    fn draw_score(&mut self, d: &mut RaylibDrawHandle, thread: &RaylibThread) {
+    fn draw_score(&mut self, d: &mut RaylibDrawHandle) {
 
         // draw score left of the center screen
         d.draw_text(&format!("{}", self.score.0),
@@ -156,7 +180,7 @@ impl Game {
         );
     }
 
-    fn draw_center_line(&mut self, d: &mut RaylibDrawHandle, thread: &RaylibThread) {
+    fn draw_center_line(&mut self, d: &mut RaylibDrawHandle) {
         // draw dotted line in the middle of the screen to divide the field
         let mut i = 0;
         while i < self.screen_height {
@@ -170,7 +194,7 @@ impl Game {
         }
     }
 
-    fn draw_ball(&mut self, d: &mut RaylibDrawHandle, thread: &RaylibThread) {
+    fn draw_ball(&mut self, d: &mut RaylibDrawHandle) {
         // draw ball
         d.draw_circle_v(self.ball_position, self.ball_radius, Color::WHITE);
     }
@@ -241,9 +265,10 @@ impl Game {
             // randomize ball velocity via fastrand vector2
             self.ball_velocity = get_random_direction();
 
-            // add score to right player
+            // add score to right player (enemy)
             self.score.1 += 1;
             self.time_since_last_score = get_time();
+            play_sfx(SoundType::EnemyScored, 0.5, 1.0);
         }
         else if self.ball_position.x > self.screen_width as f32 + self.ball_radius / 2.0 {
             // set ball position to center
@@ -253,9 +278,10 @@ impl Game {
             // randomize ball velocity via fastrand vector2
             self.ball_velocity = get_random_direction();
 
-            // add score to right player
+            // add score to left player
             self.score.0 += 1;
             self.time_since_last_score = get_time();
+            play_sfx(SoundType::PlayerScored, 0.5, 1.0);
         }
 
         // check for collision with top and bottom walls
@@ -297,6 +323,9 @@ fn check_ball_collision(ball_position: Vector2,
 
 fn reflect_ball(v_in: Vector2, ball_position: Vector2, paddle_center: Vector2) -> Vector2 {
     let mut v_out = v_in;
+    // bounce off paddle Y velocity is the difference between the ball position and the paddle center normalized
+    v_out.y = (ball_position.y - paddle_center.y).normalize(0.0, 1.0);
+
     v_out.x *= -1.0;
     v_out
 }

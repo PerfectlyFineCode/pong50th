@@ -10,11 +10,11 @@ pub struct SoundHandle {
     pub pitch: f32,
 }
 
-#[derive(Eq, Hash, PartialEq)]
+#[derive(Eq, Hash, PartialEq, Debug)]
 pub enum SoundType {
     Bounce,
-    Score,
-    Wall,
+    PlayerScored,
+    EnemyScored,
 }
 
 pub(crate) static mut SOUND_STACK: Vec<SoundHandle> = Vec::new();
@@ -36,7 +36,7 @@ impl SoundManager {
     }
 
     pub fn play(&self, sound_type: &SoundType, volume: f32, pitch: f32) {
-        let sound = self.sounds.get(sound_type).unwrap();
+        let sound = self.sounds.get(sound_type).expect(format!("Sound {:?} not found", sound_type).as_str());
         unsafe {
             let c_sound = sound.clone();
             SetAudioStreamPitch(c_sound.stream, pitch);

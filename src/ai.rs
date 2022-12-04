@@ -1,4 +1,5 @@
 use raylib::prelude::*;
+use crate::time::{DELTA_TIME, TIME};
 
 pub struct AI {
     ball_position: Vector2,
@@ -21,7 +22,7 @@ impl AI {
             ball_radius: Default::default(),
             position: Vector2::new(screen_width - 20.0, screen_height / 2.0 - 50.0),
             size: Vector2::new(10.0, 100.0),
-            speed: 6.0,
+            speed: 1000.0,
             screen_width,
             screen_height,
         }
@@ -44,12 +45,13 @@ impl AI {
     }
 
     pub fn update(&mut self) {
+        let delta_time = unsafe { DELTA_TIME };
         // move Y towards ball
         if self.position.y + self.size.y / 2.0 < self.ball_position.y {
-            self.position.y += self.speed;
+            self.position.y += self.speed * delta_time;
         }
         else if self.position.y + self.size.y / 2.0 > self.ball_position.y {
-            self.position.y -= self.speed;
+            self.position.y -= self.speed * delta_time;
         }
 
         self.clamp_to_screen();

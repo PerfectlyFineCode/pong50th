@@ -1,3 +1,5 @@
+#![windows_subsystem = "windows"]
+
 mod game;
 mod vectorhelper;
 mod ai;
@@ -6,6 +8,9 @@ mod debug;
 mod stringhelper;
 mod audiosystem;
 mod audiohelper;
+mod floathelper;
+mod credits;
+mod gamestate;
 
 use std::collections::HashMap;
 use raylib::ffi::{InitAudioDevice, LoadSound, LoadSoundFromWave, LoadWaveFromMemory, PlaySound, PlaySoundMulti, SetAudioStreamPitch, SetSoundVolume};
@@ -14,30 +19,40 @@ use crate::debug::DRAW_LIST;
 
 fn main() {
     let (mut rl, thread) = init()
+        .vsync()
         .size(800, 450)
         .title("raylib [core] example - basic window")
+        .resizable()
         .build();
 
     // initialize raylib audio
     unsafe { InitAudioDevice(); };
 
-    // borderless window
-    // rl.set_window_position(0, 0);
-    // rl.set_window_size(1920, 1080);
-    let state = rl.get_window_state();
-    rl.set_target_fps(120);
-    rl.set_window_monitor(0);
+    // rl.set_target_fps(120);
+    let mut state = rl.get_window_state();
+    state = state.set_vsync_hint(true)
+        .set_window_undecorated(true)
+        .set_window_maximized(true);
+    rl.set_window_state(state);
 
     // load sounds
     let mut sound_map = HashMap::new();
     sound_map.insert(audiosystem::SoundType::Bounce, unsafe {
         load_from_memory!("..\\res\\sounds\\paddle_hit.wav")
     });
+    sound_map.insert(audiosystem::SoundType::PlayerScored, unsafe {
+        load_from_memory!("..\\res\\sounds\\win.wav")
+    });
+    sound_map.insert(audiosystem::SoundType::EnemyScored, unsafe {
+        load_from_memory!("..\\res\\sounds\\lose.wav")
+    });
 
-    // initialize audiomanager
+    // initialize audiomanager with sounds from sound_map
     let mut audio_manager = audiosystem::SoundManager::new(Some(sound_map));
 
-    let mut game = game::Game::new(&mut rl, &thread);
+    let mut game = game::Game::new(&mut rl);
+    game.time_since_last_score = 5.0;
+    let mut credits = credits::Credits::new();
 
     while !rl.window_should_close() {
         let time = &rl.get_time();
@@ -49,15 +64,28 @@ fn main() {
         }
 
         // game.update(&mut rl, &thread);
-        game.update(&mut rl, &thread);
+        if game.game_state == game::GameState::Playing {
+            game.update(&mut rl);
+        } else if game.game_state == game::GameState::Credits {
+            credits.update();
+        }
+        // game.update(&mut rl);
 
         let mut d = rl.begin_drawing(&thread);
+
+        credits.draw_credits(&mut d);
 
         let bounds = (d.get_screen_width(), d.get_screen_height());
         game.set_screen_size(bounds.0, bounds.1);
 
         d.clear_background(Color::BLACK);
-        game.draw(&mut d, &thread);
+        if game.game_state == game::GameState::Playing {
+            game.draw(&mut d);
+        }
+        else if game.game_state == game::GameState::Credits {
+            credits.draw_credits(&mut d);
+        }
+        // game.draw(&mut d);
 
         // play audio effects on stack
         unsafe {
