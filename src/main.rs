@@ -1,3 +1,4 @@
+// if debug assertions are enabled
 #![windows_subsystem = "windows"]
 
 mod game;
@@ -13,14 +14,14 @@ mod credits;
 mod gamestate;
 
 use std::collections::HashMap;
-use raylib::ffi::{InitAudioDevice, LoadSound, LoadSoundFromWave, LoadWaveFromMemory, PlaySound, PlaySoundMulti, SetAudioStreamPitch, SetSoundVolume};
+use raylib::ffi::{InitAudioDevice, LoadImageFromMemory, LoadSound, LoadSoundFromWave, LoadWaveFromMemory, PlaySound, PlaySoundMulti, SetAudioStreamPitch, SetSoundVolume, SetWindowIcon};
 use raylib::prelude::*;
 use crate::debug::DRAW_LIST;
 
 fn main() {
     let (mut rl, thread) = init()
         .vsync()
-        .size(800, 450)
+        .size(1920, 1080)
         .title("raylib [core] example - basic window")
         .resizable()
         .build();
@@ -32,8 +33,17 @@ fn main() {
     let mut state = rl.get_window_state();
     state = state.set_vsync_hint(true)
         .set_window_undecorated(true)
-        .set_window_maximized(true);
+        .set_fullscreen_mode(true);
     rl.set_window_state(state);
+
+    unsafe {
+        SetWindowIcon(unsafe {
+            let data = include_bytes!("../icon.png");
+            LoadImageFromMemory(const_c!(".png"),
+                                data.as_ptr() as *const _,
+                                data.len() as _)
+        });
+    }
 
     // load sounds
     let mut sound_map = HashMap::new();
@@ -54,6 +64,8 @@ fn main() {
     game.time_since_last_score = 5.0;
     let mut credits = credits::Credits::new();
 
+    rl.hide_cursor();
+
     while !rl.window_should_close() {
         let time = &rl.get_time();
 
@@ -67,18 +79,17 @@ fn main() {
         if game.game_state == game::GameState::Playing {
             game.update(&mut rl);
         } else if game.game_state == game::GameState::Credits {
-            credits.update();
+            credits.update(&mut game);
         }
         // game.update(&mut rl);
 
         let mut d = rl.begin_drawing(&thread);
 
-        credits.draw_credits(&mut d);
-
         let bounds = (d.get_screen_width(), d.get_screen_height());
         game.set_screen_size(bounds.0, bounds.1);
 
         d.clear_background(Color::BLACK);
+
         if game.game_state == game::GameState::Playing {
             game.draw(&mut d);
         }
